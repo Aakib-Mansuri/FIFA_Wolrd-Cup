@@ -1,0 +1,24 @@
+Remove NULL From Matches:
+db.Matches.find({'HomeTeam.Players':{FifaId:'NULL',Name:'NULL'}})
+db.Matches.updateMany({'HomeTeam.Players':{FifaId:'NULL',Name:'NULL'}},{$pull:{'HomeTeam.Players':{FifaId:'NULL',Name:'NULL'}}})
+
+db.Matches.find({'AwayTeam.Players':{FifaId:'NULL',Name:'NULL'}})
+db.Matches.updateMany({'AwayTeam.Players':{FifaId:'NULL',Name:'NULL'}},{$pull:{'AwayTeam.Players':{FifaId:'NULL',Name:'NULL'}}})
+
+
+
+Remove NULL From Players:
+db.Players.find({'Performance.OverallRating':'NULL'})
+db.Players.updateMany({'Performance.OverallRating':'NULL'},{$unset:{'Performance.OverallRating':1}})
+
+db.Players.find({'Performance.Balance':'NULL'})
+db.Players.updateMany({'Performance.Balance':'NULL'},{$unset:{'Performance.Balance':1}})
+
+db.Players.find({'Performance.Stamina':'NULL'})
+db.Players.updateMany({'Performance.Stamina':'NULL'},{$unset:{'Performance.Stamina':1}})
+
+db.Players.find({'Performance.Strength':'NULL'})
+db.Players.updateMany({'Performance.Strength':'NULL'},{$unset:{'Performance.Strength':1}})
+
+db.Players.find({Performance:{}})
+db.Players.updateMany({Performance:{}},{$unset:{Performance:1}})

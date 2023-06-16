@@ -1,0 +1,223 @@
+1. Find total League, Season, Matches played in each Country:
+db.Matches.aggregate([
+    {$group:{_id:'$Country', TL:{$addToSet:'$League'},TS:{$addToSet:'$Season'}, TM:{$sum:1}}},
+    {$project:{_id:0,Country:'$_id',TotalLeague:{$size:'$TL'},TotalSeason:{$size:'$TS'},TotalMatch:'$TM'}}
+])
+
+
+
+
+2. Find Countries, Total Matches played in each Season: 
+db.Matches.aggregate([
+    {$group:{_id:'$Season', Country:{$addToSet:'$Country'}, TM:{$sum:1}}},
+    {$project:{_id:0,Season:'$_id', Country:'$Country',TotalMatch:'$TM'}}
+])
+
+db.Matches.aggregate([{$group:{_id:{Season:'$Season',Country:'$Country'}, Matches:{$sum:1}}},{$sort:{_id:1}}])
+
+
+
+
+3. Find Total Goals and Match played by each Team:
+var map = function(){
+    emit(this.HomeTeam.Name,{M:1,G:this.Goals.HomeTeam});
+    emit(this.AwayTeam.Name,{M:1,G:this.Goals.AwayTeam});
+}
+
+var sum = function(key,value){
+    var myElem = {Match:0,Goal:0};
+    for(var i=0; i < value.length; i++)
+    {
+        myElem.Match += value[i].M;
+        myElem.Goal += value[i].G;
+    }
+    return myElem;
+}
+
+db.Matches.mapReduce(map,sum,{out:'TeamAnalysis'})
+db.TeamAnalysis.aggregate([{$project:{_id:0,Team:'$_id',Matches:'$value.Match',Goals:'$value.Goal'}},{$sort:{Goals:-1}}])
+
+
+
+
+4. Find Number of Matches won by each Team:
+var map = function(){
+    var Difference = 0;
+    if(this.Goals.HomeTeam != this.Goals.AwayTeam)
+    {
+        if(this.Goals.HomeTeam > this.Goals.AwayTeam)
+        {
+            Difference = this.Goals.HomeTeam - this.Goals.AwayTeam;
+            emit(this.HomeTeam.Name,{M:1,G:Difference});
+        }
+
+        else
+        {
+            Difference = this.Goals.AwayTeam - this.Goals.HomeTeam;
+            emit(this.AwayTeam.Name,{M:1,G:Difference});
+        }
+    }
+}
+
+var sum = function(key,value){
+    var myElem = {Match:0,AvgGoal:0};
+    for(var i=0; i < value.length; i++)
+    {
+        myElem.Match += value[i].M;
+        myElem.AvgGoal += value[i].G;
+    }
+    myElem.AvgGoal /= i;
+    return myElem;
+}
+
+db.Matches.mapReduce(map,sum,{out:'WonTeamAnalysis'})
+db.WonTeamAnalysis.aggregate([{$project:{_id:0,Team:'$_id',Won:'$value.Match',AvgWonGoal:'$value.AvgGoal'}},{$sort:{Won:-1}}])
+
+
+
+
+5. Display Details and Played Matches by each Player of Top 1 Won Team:
+var map = function(){
+    if(this.HomeTeam.Name =='Manchester United(MUN)')
+    {
+        for(var i=0; i < this.HomeTeam.Players.length; i++)
+            emit(this.HomeTeam.Players[i].FifaId,1);
+    }
+    
+    else if(this.AwayTeam.Name == 'Manchester United(MUN)')
+    {
+        for(var i=0; i < this.AwayTeam.Players.length; i++)
+            emit(this.AwayTeam.Players[i].FifaId,1);
+    }
+}
+
+var sum = function(key,value){return Array.sum(value);}
+
+db.Matches.mapReduce(map,sum,{out:'Top1TeamPlayers',query:{$or:[{'HomeTeam.Name':'Manchester United(MUN)'},{'AwayTeam.Name':'Manchester United(MUN)'}]}})
+
+db.Top1TeamPlayers.aggregate([
+    {
+        $lookup:
+        {
+            from: 'Players',
+            localField: '_id',
+            foreignField: 'FifaId',
+            as: 'Details'
+        }
+    },
+    {$sort:{value:-1}},
+])
+
+
+
+
+6. Display Top 5 High Performance Players from Top1TeamPlayers:
+db.Top1TeamPlayers.aggregate([
+    {
+        $lookup:
+        {
+            from: 'Players',
+            localField: '_id',
+            foreignField: 'FifaId',
+            as: 'Details'
+        }
+    },
+    {$unwind:'$Details'},
+    {$sort:{'Details.Performance.OverallRating':-1}},
+    {$limit:5},
+    {
+        $project:{_id:0,FifaId:'$_id',Name:'$Details.Name',Performance:'$Details.Performance.OverallRating'}
+    }
+])
+
+
+
+
+7. Find the Teams, which Won even Team has less Players than opposite Team:
+var map = function(){
+    if(this.HomeTeam.Players.length < this.AwayTeam.Players.length && this.Goals.HomeTeam > this.Goals.AwayTeam)
+    {
+        emit(this.HomeTeam.Name,1);
+    }
+    else if(this.AwayTeam.Players.length < this.HomeTeam.Players.length && this.Goals.AwayTeam > this.Goals.HomeTeam)
+    {
+        emit(this.AwayTeam.Name,1);
+    }
+}
+
+var sum = function(key,value){return Array.sum(value);}
+
+db.Matches.mapReduce(map,sum,{out:'WonEvenLessPlayers'})
+db.WonEvenLessPlayers.aggregate([{$project:{_id:0,Team:'$_id',NoTimeWon:'$value'}},{$sort:{NoTimeWon:-1}},{$limit:3}])
+
+
+
+
+8. Find Number of Played Matches of each Player in each Season:
+var map = function(){
+    for(var index=0;index<this.HomeTeam.Players.length;index++)
+        emit({Season:this.Season,FifaId:this.HomeTeam.Players[index].FifaId},1);
+    
+    for(var index=0;index<this.AwayTeam.Players.length;index++)
+        emit({Season:this.Season,FifaId:this.AwayTeam.Players[index].FifaId},1);
+}
+
+var reduce = function(key,value){return Array.sum(value);}
+
+db.Matches.mapReduce(map,reduce,{out:"PlayersSeasonPlayedMatch"})
+db.PlayersSeasonPlayedMatch.aggregate([{$project:{_id:0,Season:'$_id.Season', FifaId:'$_id.FifaId', MatchPlayed:'$value'}},{$sort:{Season:1}}])
+
+
+
+
+9. Find Top 3 Players, who Played most:
+var map = function(){
+    for(var index=0;index<this.HomeTeam.Players.length;index++)
+        emit(this.HomeTeam.Players[index].FifaId,1);
+    
+    for(var index=0;index<this.AwayTeam.Players.length;index++)
+        emit(this.AwayTeam.Players[index].FifaId,1);
+}
+
+var reduce = function(key,value){return Array.sum(value);}
+
+db.Matches.mapReduce(map,reduce,{out:"PlayersPlayedMatch"})
+db.PlayersPlayedMatch.aggregate([
+    {$project:{_id:0,FifaId:"$_id",MatchPlayed:"$value"}},
+    {$sort:{MatchPlayed:-1}},{$limit:3},
+    {$lookup:{from:'Players',localField:'FifaId',foreignField:'FifaId',as:'Details'}},
+    {$unwind:'$Details'},
+    {$project:{_id:0,FifaId:"$FifaId",Name:'$Details.Name',MatchPlayed:"$MatchPlayed",Performance:'$Details.Performance.OverallRating'}}
+])
+
+
+
+
+10. Find Top 3 High Performance Players:
+db.Players.find().sort({'Performance.OverallRating':-1}).limit(3)
+
+
+
+
+11. Find The most competitor Teams:
+var map = function(){
+        emit({HomeTeam:this.HomeTeam.Name,AwayTeam:this.AwayTeam.Name},1);
+        emit({HomeTeam:this.AwayTeam.Name,AwayTeam:this.HomeTeam.Name},1);
+}
+
+var reduce = function(key,value){return Array.sum(value);}
+
+db.Matches.mapReduce(map,reduce,{out:"Competitors"})
+db.Competitors.aggregate([{$sort:{value: -1}},{$project:{_id:0,Team1:'$_id.HomeTeam',Team2:'$_id.AwayTeam', MatchPlayed:'$value'}}])
+
+
+
+
+12. Find Total Number of Matches Played Between 2011-01-01 and 2012-12-31:
+db.Matches.find({$and:[{Date:{$gte:"2011-01-01"}},{Date:{$lte:"2012-12-31"}}]}).count()
+
+
+
+
+13. Find Date on wich most Matches played:
+db.Matches.aggregate([{$group:{_id:"$Date",MatchPlayed:{$sum:1}}},{$sort:{MatchPlayed: -1}},{$project:{_id:0,Date:'$_id',MatchPlayed:'$MatchPlayed'}},{$limit:5}])
