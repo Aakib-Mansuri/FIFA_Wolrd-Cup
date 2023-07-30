@@ -9,3 +9,4 @@ ETL Process:
   Then load data in MongoDB.
 
 Now fire queries to get output.
+Link: https://www.linkedin.com/posts/aakib-mansuri-702bb7184_big-data-project-fifa-world-cup-analysis-activity-7075409662723956737-dh0G?utm_source=share&utm_medium=member_desktop
